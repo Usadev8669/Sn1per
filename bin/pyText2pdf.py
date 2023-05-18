@@ -87,7 +87,7 @@ class PyText2Pdf(object):
         # formfeeds flag
         self._doFFs=False
         self._progname="PyText2Pdf"
-        self._appname = " ".join((self._progname,str(self._version)))
+        self._appname = " ".join((self._progname, self._version))
         # default font
         self._font="/Courier"
         # default font size
@@ -122,7 +122,7 @@ class PyText2Pdf(object):
         self._keywords = []
         # Custom regexp  for page breaks
         self._pagebreakre = None
-        
+
         # marker objects
         self._curobj = 5
         self._pageObs = [0]
@@ -452,11 +452,11 @@ class PyText2Pdf(object):
         padding,i=0,0
         atEOF=0
         linebuf = ''
-        
+
         while not atEOF:
             beginstream = self.startpage()
             column=1
-            
+
             while column <= self._columns:
                 column += 1
                 atFF=0
@@ -464,52 +464,50 @@ class PyText2Pdf(object):
                 lineNo=0
                 # Special flag for regexp page break
                 pagebreak = False
-                
+
                 while lineNo < self._lines and not atFF and not atEOF and not pagebreak:
                     linebuf = ''
                     lineNo += 1
                     ws("(")
                     charNo=0
-                    
+
                     while charNo < self._cols:
                         charNo += 1
                         ch = self._ifs.read(1)
-                        cond = ((ch != '\n') and not(ch==FF and self._doFFs) and (ch != ''))
+                        cond = ch != '\n' and (ch != FF or not self._doFFs) and ch != ''
                         if not cond:
                             # See if this dude matches the pagebreak regexp
                             if self._pagebreakre and self._pagebreakre.search(linebuf.strip()):
                                 pagebreak = True
-                                
+
                             linebuf = ''
                             break
                         else:
                             linebuf = linebuf + ch
 
                         if ord(ch) >= 32 and ord(ch) <= 127:
-                            if ch == '(' or ch == ')' or ch == '\\':
+                            if ch in ['(', ')', '\\']:
                                 ws("\\")
                             ws(ch)
-                        else:
-                            if ord(ch) == 9:
-                                padding =self._tab - ((charNo - 1) % self._tab)
-                                for i in range(padding):
-                                    ws(" ")
-                                charNo += (padding -1)
-                            else:
-                                if ch != FF:
-                                    # write \xxx form for dodgy character
-                                    buf = "".join(('\\', ch))
-                                    ws(buf)
-                                else:
-                                    # dont print anything for a FF
-                                    charNo -= 1
+                        elif ord(ch) == 9:
+                            padding =self._tab - ((charNo - 1) % self._tab)
+                            for _ in range(padding):
+                                ws(" ")
+                            charNo += (padding -1)
+                        elif ch == FF:
+                            # dont print anything for a FF
+                            charNo -= 1
 
+                        else:
+                            # write \xxx form for dodgy character
+                            buf = "".join(('\\', ch))
+                            ws(buf)
                     ws(")'\n")
                     if ch == FF:
                         atFF=1
                     if lineNo == self._lines:
                         atBOP=1
-                        
+
                     if atBOP:
                         pos=0
                         ch = self._ifs.read(1)

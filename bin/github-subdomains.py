@@ -15,12 +15,12 @@ from colored import fg, bg, attr
 from multiprocessing.dummy import Pool
 
 
-TOKENS_FILE = os.path.dirname(os.path.realpath(__file__))+'/.tokens'
+TOKENS_FILE = f'{os.path.dirname(os.path.realpath(__file__))}/.tokens'
 
 
 def githubApiSearchCode( search, page ):
-    headers = {"Authorization":"token "+random.choice(t_tokens)}
-    url = 'https://api.github.com/search/code?s=indexed&type=Code&o=desc&q=' + search + '&page=' + str(page)
+    headers = {"Authorization": f"token {random.choice(t_tokens)}"}
+    url = f'https://api.github.com/search/code?s=indexed&type=Code&o=desc&q={search}&page={str(page)}'
     # print(url)
 
     try:
@@ -28,7 +28,7 @@ def githubApiSearchCode( search, page ):
         json = r.json()
         return json
     except Exception as e:
-        print( "%s[-] error occurred: %s%s" % (fg('red'),e,attr(0)) )
+        print(f"{fg('red')}[-] error occurred: {e}{attr(0)}")
         return False
 
 
@@ -41,18 +41,14 @@ def getRawUrl( result ):
 
 def readCode( regexp, source, result ):
     url = getRawUrl( result )
-    code = doGetCode( url )
-    # print(code)
-
-    if code:
-        matches = re.findall( regexp, code )
-        if matches:
-            for sub in  matches:
+    if code := doGetCode(url):
+        if matches := re.findall(regexp, code):
+            for sub in matches:
                 # print(sub)
                 sub = sub[0].replace('2F','').lower().strip()
-                if len(sub) and not sub in t_history:
+                if len(sub) and sub not in t_history:
                     t_history.append( sub )
-                    sys.stdout.write( "%s" % sub )
+                    sys.stdout.write(f"{sub}")
                     if source:
                         sys.stdout.write( "\t-> %s" % result['html_url'] )
                     sys.stdout.write( "\n" )
@@ -80,20 +76,13 @@ args = parser.parse_args()
 t_tokens = []
 if args.token:
     t_tokens = args.token.split(',')
-else:
-    if os.path.isfile(TOKENS_FILE):
-        fp = open(TOKENS_FILE,'r')
+elif os.path.isfile(TOKENS_FILE):
+    with open(TOKENS_FILE,'r') as fp:
         t_tokens = fp.read().split("\n")
-        fp.close()
-
 if not len(t_tokens):
     parser.error( 'auth token is missing' )
 
-if args.source:
-    _source = True
-else:
-    _source = False
-
+_source = bool(args.source)
 if args.domain:
     _domain = args.domain
 else:
@@ -101,12 +90,12 @@ else:
 
 t_history = []
 page = 1
-_search = '"' + _domain + '"'
+_search = f'"{_domain}"'
 
 ### this is a test, looks like we got more result that way
 import tldextract
 t_host_parse = tldextract.extract( _domain )
-_search = '"' + t_host_parse.domain + '"'
+_search = f'"{t_host_parse.domain}"'
 # print( t_host_parse )
 # exit()
 ###
@@ -128,7 +117,12 @@ while True:
     # print(t_json)
     page = page + 1
 
-    if not t_json or 'documentation_url' in t_json or not 'items' in t_json or not len(t_json['items']):
+    if (
+        not t_json
+        or 'documentation_url' in t_json
+        or 'items' not in t_json
+        or not len(t_json['items'])
+    ):
         break
 
     pool = Pool( 30 )
