@@ -5,9 +5,9 @@ import json
 
 def waybackurls(host, with_subs):
     if with_subs:
-        url = 'http://web.archive.org/cdx/search/cdx?url=*.%s/*&output=json&fl=original&collapse=urlkey' % host
+        url = f'http://web.archive.org/cdx/search/cdx?url=*.{host}/*&output=json&fl=original&collapse=urlkey'
     else:
-        url = 'http://web.archive.org/cdx/search/cdx?url=%s/*&output=json&fl=original&collapse=urlkey' % host
+        url = f'http://web.archive.org/cdx/search/cdx?url={host}/*&output=json&fl=original&collapse=urlkey'
     r = requests.get(url)
     results = r.json()
     return results[1:]
@@ -20,16 +20,13 @@ if __name__ == '__main__':
         sys.exit()
 
     host = sys.argv[1]
-    with_subs = False
-    if argc > 3:
-        with_subs = True
-
+    with_subs = argc > 3
     urls = waybackurls(host, with_subs)
     json_urls = json.dumps(urls)
     if urls:
-        filename = '%s-waybackurls.json' % host
+        filename = f'{host}-waybackurls.json'
         with open(filename, 'w') as f:
             f.write(json_urls)
-        print('[*] Saved results to %s' % filename)
+        print(f'[*] Saved results to {filename}')
     else:
         print('[-] Found nothing')

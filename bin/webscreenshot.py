@@ -97,13 +97,19 @@ p_domain = '[a-z0-9]+([\-\.]{1}[a-z0-9]+)*\.[a-z]{2,6}'
 p_port = '\d{0,5}'
 p_resource = '(?:/(?P<res>.*))?'
 
-full_uri_domain = re.compile('^(?P<protocol>http(?:|s))://(?P<host>%s|%s)(?::(?P<port>%s))?%s$' % (p_domain, p_ipv4_elementary, p_port, p_resource))
+full_uri_domain = re.compile(
+    f'^(?P<protocol>http(?:|s))://(?P<host>{p_domain}|{p_ipv4_elementary})(?::(?P<port>{p_port}))?{p_resource}$'
+)
 
-fqdn_and_port = re.compile('^(?P<host>%s):(?P<port>%s)%s$' % (p_domain, p_port, p_resource))
-fqdn_only = re.compile('^(?P<host>%s)%s$' % (p_domain, p_resource))
+fqdn_and_port = re.compile(
+    f'^(?P<host>{p_domain}):(?P<port>{p_port}){p_resource}$'
+)
+fqdn_only = re.compile(f'^(?P<host>{p_domain}){p_resource}$')
 
-ipv4_and_port = re.compile('^(?P<host>%s):(?P<port>%s)%s' % (p_ipv4_elementary, p_port, p_resource))
-ipv4_only = re.compile('^(?P<host>%s)%s$' % (p_ipv4_elementary, p_resource))
+ipv4_and_port = re.compile(
+    f'^(?P<host>{p_ipv4_elementary}):(?P<port>{p_port}){p_resource}'
+)
+ipv4_only = re.compile(f'^(?P<host>{p_ipv4_elementary}){p_resource}$')
 
 entry_from_csv = re.compile('^(?P<host>%s|%s)\s+(?P<port>\d+)$' % (p_domain, p_ipv4_elementary))
 
@@ -127,31 +133,33 @@ def shell_exec(url, command, options):
         Taken from http://howto.pui.ch/post/37471155682/set-timeout-for-a-shell-command-in-python
     """
     global SHELL_EXECUTION_OK, SHELL_EXECUTION_ERROR
-    
-    logger_url = logging.getLogger("%s" % url)
+
+    logger_url = logging.getLogger(f"{url}")
     logger_url.setLevel(options.log_level)
-    
+
     timeout = int(options.timeout)
     start = datetime.datetime.now()
-    
-    try :
+
+    try:
         p = subprocess.Popen(shlex.split(command), shell=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        
+
         # binaries timeout
         while p.poll() is None:
             time.sleep(0.1)
             now = datetime.datetime.now()
             if (now - start).seconds > timeout:
-                logger_url.debug("Shell command PID %s reached the timeout, killing it now" % p.pid)
+                logger_url.debug(
+                    f"Shell command PID {p.pid} reached the timeout, killing it now"
+                )
                 logger_url.error("Screenshot somehow failed\n")
-                
+
                 if sys.platform == 'win32':
                     p.send_signal(signal.SIGTERM)
                 else:
                     p.send_signal(signal.SIGKILL)
-                
+
                 return SHELL_EXECUTION_ERROR
-        
+
         retval = p.poll()
         if retval != SHELL_EXECUTION_OK:
             if retval == PHANTOMJS_HTTP_AUTH_ERROR_CODE:
@@ -159,22 +167,24 @@ def shell_exec(url, command, options):
                 logger_url.error("HTTP Authentication requested, try to pass credentials with -u and -b options")
             else:
                 # Phantomjs general error
-                logger_url.error("Shell command PID %s returned an abnormal error code: '%s'" % (p.pid,retval))
+                logger_url.error(
+                    f"Shell command PID {p.pid} returned an abnormal error code: '{retval}'"
+                )
                 logger_url.error("Screenshot somehow failed\n")
-                    
+
             return SHELL_EXECUTION_ERROR
-        
+
         else:
             # Phantomjs ok
-            logger_url.debug("Shell command PID %s ended normally" % p.pid)
+            logger_url.debug(f"Shell command PID {p.pid} ended normally")
             logger_url.info("Screenshot OK\n")
             return SHELL_EXECUTION_OK
-    
+
     except Exception as e:
-        if e.errno and e.errno == errno.ENOENT :
+        if e.errno and e.errno == errno.ENOENT:
             logger_url.error('renderer binary could not have been found in your current PATH environment variable, exiting')
         else:
-            logger_gen.error('Unknown error: %s, exiting' % e )
+            logger_gen.error(f'Unknown error: {e}, exiting')
         return SHELL_EXECUTION_ERROR
 
 def filter_bad_filename_chars(filename):
@@ -218,10 +228,9 @@ def entry_format_validator(line):
             'ipv4_only'             : ipv4_only, 
             'entry_from_csv'        : entry_from_csv
     }
-    
-    for name, regex in tab.items():
-        validator = regex.match(line)
-        if validator:
+
+    for regex in tab.values():
+        if validator := regex.match(line):
             return extract_all_matched_named_groups(regex, validator)
 
 def parse_targets(options, arguments):
@@ -230,27 +239,28 @@ def parse_targets(options, arguments):
     """
     
     target_list = []
-    
-    if options.input_file != None:    
+
+    if options.input_file is None:
+        lines = arguments
+
+    else:    
         with open(options.input_file,'rb') as fd_input:
             try:
                 lines = [l.decode('utf-8').lstrip().rstrip().strip() for l in fd_input.readlines()]
             except UnicodeDecodeError as e:
                 logger_gen.error('Your input file is not UTF-8 encoded, please encode it before using this script')
                 sys.exit(0)
-    else:
-        lines = arguments
-        
     for index, line in enumerate(lines, start=1):
         matches = entry_format_validator(line)
-        
+
         # pass if line can be recognized as a correct input, or if no 'host' group could be found with all the regexes
-        if matches == None or not('host' in matches.keys()):
-            logger_gen.warn("Line %s '%s' could not have been recognized as a correct input" % (index, line))
-            pass
+        if matches is None or 'host' not in matches.keys():
+            logger_gen.warn(
+                f"Line {index} '{line}' could not have been recognized as a correct input"
+            )
         else:
             host = matches['host']
-            
+
             # Protocol is 'http' by default, unless ssl is forced
             if options.ssl == True:
                 protocol = 'https'
@@ -258,44 +268,46 @@ def parse_targets(options, arguments):
                 protocol = str(matches['protocol'])
             else:
                 protocol = 'http'
-            
+
             # Port is ('80' for http) or ('443' for https) by default, unless a specific port is supplied
             if options.port != None:
                 port = options.port
             elif 'port' in matches.keys():
                 port = int(matches['port'])
-                
+
                 # if port is 443, assume protocol is https if is not specified
                 protocol = 'https' if port == 443 else protocol
             else:
                 port = 443 if protocol == 'https' else 80
-            
+
             # No resource URI by default
-            if 'res' in matches.keys():
-                res = str(matches['res'])
-            else:
-                res = None
-            
+            res = str(matches['res']) if 'res' in matches.keys() else None
             # perform screenshots over HTTP and HTTPS for each target
             if options.multiprotocol:
                 final_uri_http_port = int(matches['port']) if 'port' in matches.keys() else 80
-                final_uri_http = '%s://%s:%s' % ('http', host, final_uri_http_port)
+                final_uri_http = f'http://{host}:{final_uri_http_port}'
                 target_list.append(final_uri_http)
-                logger_gen.info("'%s' has been formatted as '%s' with supplied overriding options" % (line, final_uri_http))
-                
-                
+                logger_gen.info(
+                    f"'{line}' has been formatted as '{final_uri_http}' with supplied overriding options"
+                )
+                                
+
                 final_uri_https_port = int(matches['port']) if 'port' in matches.keys() else 443
-                final_uri_https = '%s://%s:%s' % ('https', host, final_uri_https_port)
+                final_uri_https = f'https://{host}:{final_uri_https_port}'
                 target_list.append(final_uri_https)
-                logger_gen.info("'%s' has been formatted as '%s' with supplied overriding options" % (line, final_uri_https))
-            
+                logger_gen.info(
+                    f"'{line}' has been formatted as '{final_uri_https}' with supplied overriding options"
+                )
+
             else:
-                final_uri = '%s://%s:%s' % (protocol, host, port)
-                final_uri = final_uri + '/%s' % res if res != None else final_uri
+                final_uri = f'{protocol}://{host}:{port}'
+                final_uri = f'{final_uri}/{res}' if res != None else final_uri
                 target_list.append(final_uri)
 
-                logger_gen.info("'%s' has been formatted as '%s' with supplied overriding options" % (line, final_uri))
-    
+                logger_gen.info(
+                    f"'{line}' has been formatted as '{final_uri}' with supplied overriding options"
+                )
+
     return target_list      
 
 def craft_cmd(url_and_options):
@@ -303,16 +315,18 @@ def craft_cmd(url_and_options):
         Craft the correct command with url and options
     """
     global logger_output, PHANTOMJS_BIN, WEBSCREENSHOT_JS, SCREENSHOTS_DIRECTORY, SHELL_EXECUTION_OK, SHELL_EXECUTION_ERROR
-    
+
     url, options = url_and_options
-    
-    logger_url = logging.getLogger("%s" % url)
+
+    logger_url = logging.getLogger(f"{url}")
     logger_url.addHandler(logger_output)
     logger_url.setLevel(options.log_level)
 
     #output_filename = os.path.join(SCREENSHOTS_DIRECTORY, ('%s.png' % filter_bad_filename_chars(url)))
-    output_filename = os.path.join(SCREENSHOTS_DIRECTORY, ('%s.jpg' % filter_bad_filename_chars(url)))
-    
+    output_filename = os.path.join(
+        SCREENSHOTS_DIRECTORY, f'{filter_bad_filename_chars(url)}.jpg'
+    )
+
     # PhantomJS renderer
     if options.renderer == 'phantomjs':
         # If you ever want to add some voodoo options to the phantomjs command to be executed, that's here right below
@@ -321,46 +335,63 @@ def craft_cmd(url_and_options):
                             '--ssl-protocol any',
                             '--ssl-ciphers ALL'
         ]
-        
-        cmd_parameters.append("--proxy %s" % options.proxy) if options.proxy != None else None
-        cmd_parameters.append("--proxy-auth %s" % options.proxy_auth) if options.proxy_auth != None else None
-        cmd_parameters.append("--proxy-type %s" % options.proxy_type) if options.proxy_type != None else None
 
-        cmd_parameters.append('"%s" url_capture="%s" output_file="%s"' % (WEBSCREENSHOT_JS, url, output_filename))
-        
-        cmd_parameters.append('header="Cookie: %s"' % options.cookie.rstrip(';')) if options.cookie != None else None
-        
-        cmd_parameters.append('http_username="%s"' % options.http_username) if options.http_username != None else None
-        cmd_parameters.append('http_password="%s"' % options.http_password) if options.http_password != None else None
-        
+        cmd_parameters.append(
+            f"--proxy {options.proxy}"
+        ) if options.proxy != None else None
+        cmd_parameters.append(
+            f"--proxy-auth {options.proxy_auth}"
+        ) if options.proxy_auth != None else None
+        cmd_parameters.append(
+            f"--proxy-type {options.proxy_type}"
+        ) if options.proxy_type != None else None
+
+        cmd_parameters.append(
+            f'"{WEBSCREENSHOT_JS}" url_capture="{url}" output_file="{output_filename}"'
+        )
+
+        cmd_parameters.append(
+            f"""header="Cookie: {options.cookie.rstrip(';')}\""""
+        ) if options.cookie != None else None
+
+        cmd_parameters.append(
+            f'http_username="{options.http_username}"'
+        ) if options.http_username != None else None
+        cmd_parameters.append(
+            f'http_password="{options.http_password}"'
+        ) if options.http_password != None else None
+
         if options.header:
-            for header in options.header:
-                cmd_parameters.append('header="%s"' % header.rstrip(';'))
-    
-    # Chrome and chromium renderers
+            cmd_parameters.extend(
+                f"""header="{header.rstrip(';')}\""""
+                for header in options.header
+            )
     else: 
         cmd_parameters =  [ CHROME_BIN ] if options.renderer == 'chrome' else [ CHROMIUM_BIN ]
-        cmd_parameters += [ '--allow-running-insecure-content',
-                            '--ignore-certificate-errors',
-                            '--ignore-urlfetcher-cert-requests',
-                            '--reduce-security-for-testing',
-                            '--no-sandbox',
-                            '--headless',
-                            '--disable-gpu',
-                            '--hide-scrollbars',
-                            '--incognito',
-                            '-screenshot="%s"' % output_filename,
-                            '--window-size=1200,800',
-                            '"%s"' % url
+        cmd_parameters += [
+            '--allow-running-insecure-content',
+            '--ignore-certificate-errors',
+            '--ignore-urlfetcher-cert-requests',
+            '--reduce-security-for-testing',
+            '--no-sandbox',
+            '--headless',
+            '--disable-gpu',
+            '--hide-scrollbars',
+            '--incognito',
+            f'-screenshot="{output_filename}"',
+            '--window-size=1200,800',
+            f'"{url}"',
         ]
-        cmd_parameters.append('--proxy-server="%s"' % options.proxy) if options.proxy != None else None
-    
+        cmd_parameters.append(
+            f'--proxy-server="{options.proxy}"'
+        ) if options.proxy != None else None
+
     cmd = " ".join(cmd_parameters)
-    
+
     logger_url.debug("Shell command to be executed\n'%s'\n" % cmd)
-    
+
     execution_retval = shell_exec(url, cmd, options)
-    
+
     return execution_retval, url
 
     

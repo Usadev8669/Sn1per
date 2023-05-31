@@ -18,10 +18,7 @@ def robots(host):
 def getpaths(snapshot):
     url = 'https://web.archive.org/web/{0}/{1}'.format(snapshot[0], snapshot[1])
     robotstext = requests.get(url).text
-    if 'Disallow:' in robotstext:  # verify it's acually a robots.txt file, not 404 page
-        paths = re.findall('/.*', robotstext)
-        return paths
-    return []
+    return re.findall('/.*', robotstext) if 'Disallow:' in robotstext else []
 
 
 if __name__ == '__main__':
@@ -32,7 +29,7 @@ if __name__ == '__main__':
     host = sys.argv[1]
 
     snapshots = robots(host)
-    print('Found %s unique results' % len(snapshots))
+    print(f'Found {len(snapshots)} unique results')
     if len(snapshots) == 0:
         sys.exit()
     print('This may take some time...')
@@ -41,7 +38,7 @@ if __name__ == '__main__':
     unique_paths = set()
     for i in paths:
         unique_paths.update(i)
-    filename = '%s-robots.txt' % host
+    filename = f'{host}-robots.txt'
     with open(filename, 'w') as f:
         f.write('\n'.join(unique_paths))
-    print('[*] Saved results to %s' % filename)
+    print(f'[*] Saved results to {filename}')
